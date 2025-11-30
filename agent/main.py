@@ -7,12 +7,21 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain.messages import HumanMessage
 from pydantic import SecretStr, BaseModel
 import os
+from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
 load_dotenv()
 
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Global in-memory vector stores (keyed by video_id)
 vector_stores = {}
