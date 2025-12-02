@@ -23,7 +23,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Global in-memory vector stores (keyed by video_id)
+# Global in-memory vector stores (keyed by thread_id)
 vector_stores = {}
 
 
@@ -33,7 +33,6 @@ class PrepareUrlRequest(BaseModel):
 
 class AskQuestionRequest(BaseModel):
     question: str
-    video_id: str
 
 
 @app.get("/")
@@ -41,8 +40,8 @@ def hello_world():
     return {"message": "Hello World"}
 
 
-@app.post("/prepare-url/{video_id}")
-def prepare_url(video_id: str, request: PrepareUrlRequest):
+@app.post("/prepare-url/{thread_id}")
+def prepare_url(thread_id: str, request: PrepareUrlRequest):
     url = request.url
 
     print("*" * 50)
@@ -73,40 +72,40 @@ def prepare_url(video_id: str, request: PrepareUrlRequest):
         session=None,
     )
 
-    vector_stores[video_id] = InMemoryVectorStore.from_documents(
+    vector_stores[thread_id] = InMemoryVectorStore.from_documents(
         documents=splits, embedding=embeddings
     )
 
     return {
         "message": "URL prepared successfully",
-        "video_id": video_id,
+        "thread_id": thread_id,
         "url": url,
         "num_documents": len(docs),
         "num_chunks": len(splits),
     }
 
 
-@app.post("/ask")
-def ask_question(request: AskQuestionRequest):
+@app.post("/ask/{thread_id}")
+def ask_question(thread_id: str, request: AskQuestionRequest):
     from agent import agent
     from utils.state import AgentState
 
-    # Check if vector store exists for the video_id
-    if request.video_id not in vector_stores:
+    # Check if vector store exists for the thread_id
+    if thread_id not in vector_stores:
         return {
-            "error": f"No vector store found for video_id: {request.video_id}. Please prepare the URL first.",
-            "video_id": request.video_id
+            "error": f"No vector store found for thread_id: {thread_id}. Please prepare the URL first.",
+            "thread_id": thread_id,
         }
 
     # Create initial state with the user's question
     init_state: AgentState = {
         "messages": [HumanMessage(request.question)],
         "context": [],
-        "video_id": request.video_id
+        "thread_id": thread_id,
     }
 
     # Invoke the agent graph
-    response = agent.invoke(init_state)
+    response = agent.invoke(init_state, {"configurable": {"thread_id": thread_id}})
 
     # Extract the final answer from the messages
     final_messages = response.get("messages", [])
@@ -114,7 +113,7 @@ def ask_question(request: AskQuestionRequest):
 
     return {
         "question": request.question,
-        "video_id": request.video_id,
+        "thread_id": thread_id,
         "answer": answer,
-        "context": response.get("context", [])
+        "context": response.get("context", []),
     }

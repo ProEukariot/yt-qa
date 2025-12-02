@@ -5,4 +5,4 @@ import operator
 class AgentState(TypedDict):
     messages: Annotated[list[AnyMessage], operator.add]
     context: list[str]
-    video_id: str
+    thread_id: str

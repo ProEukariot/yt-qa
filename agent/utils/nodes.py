@@ -14,14 +14,14 @@ def retrieve(state: AgentState):
         return {"context": []}
 
     query = messages[-1].content
-    video_id = state["video_id"]
+    thread_id = state["thread_id"]
 
-    # Get vector store for this video
-    if not video_id or video_id not in vector_stores:
-        print(f"No vector store found for video_id: {video_id}")
+    # Get vector store for this thread
+    if not thread_id or thread_id not in vector_stores:
+        print(f"No vector store found for thread_id: {thread_id}")
         return {"context": []}
 
-    vector_store = vector_stores[video_id]
+    vector_store = vector_stores[thread_id]
 
     # Retrieve relevant documents using similarity search
     k = 4  # Number of documents to retrieve
@@ -43,7 +43,7 @@ def generate(state: AgentState):
     systemMessage = SystemMessage(
         f"You are helpful assistant. Use the context to provide the answer. If there is no information in the context, say you dont know. Context: {state['context']}"
     )
-    model = ChatOpenAI(model="gpt-5-nano")
+    model = ChatOpenAI(model="gpt-4o-mini")
 
     response = model.invoke([systemMessage] + state["messages"])
 
