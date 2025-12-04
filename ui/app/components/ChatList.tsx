@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import ChatListHeader from './ChatListHeader';
+import ChatListFooter from './ChatListFooter';
 import ChatItem from './ChatItem';
 
 export interface Chat {
@@ -17,6 +18,7 @@ interface ChatListProps {
   onSelectChat: (chatId: string) => void;
   onCreateChat: () => void;
   onDeleteChat: (chatId: string) => void;
+  onDeleteAllChats: () => void;
 }
 
 export default function ChatList({
@@ -25,6 +27,7 @@ export default function ChatList({
   onSelectChat,
   onCreateChat,
   onDeleteChat,
+  onDeleteAllChats,
 }: ChatListProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
@@ -63,6 +66,12 @@ export default function ChatList({
           )}
         </div>
       </div>
+
+      <ChatListFooter
+        isCollapsed={isCollapsed}
+        onDeleteAllChats={onDeleteAllChats}
+        hasChats={chats.length > 0}
+      />
     </div>
   );
 }

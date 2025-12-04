@@ -26,6 +26,7 @@ export default function Home() {
     createNewChat,
     selectChat,
     deleteChat,
+    deleteAllChats,
     handleYoutubeUrlChange,
     handleQuestionChange,
     handlePrepareUrl,
@@ -61,18 +62,15 @@ export default function Home() {
     }
   }, []);
 
-  // Save chats to localStorage whenever they change
+  // Save chats and chatData to localStorage whenever they change
   useEffect(() => {
     if (chats.length > 0) {
       localStorage.setItem('chats', JSON.stringify(chats));
     }
-  }, [chats]);
-
-  useEffect(() => {
     if (Object.keys(chatData).length > 0) {
       localStorage.setItem('chatData', JSON.stringify(chatData));
     }
-  }, [chatData]);
+  }, [chats, chatData]);
 
   const currentMessages = currentChatId ? chatData[currentChatId]?.messages || [] : [];
   const isPrepared = currentChatId ? chatData[currentChatId]?.isPrepared || false : false;
@@ -85,10 +83,11 @@ export default function Home() {
         onSelectChat={selectChat}
         onCreateChat={createNewChat}
         onDeleteChat={deleteChat}
+        onDeleteAllChats={deleteAllChats}
       />
 
       <div className="flex-1 flex flex-col">
-        <div className="flex-1 overflow-y-auto px-6 py-12">
+        <div className="flex-1 overflow-y-auto px-6 py-12 pb-24">
           {!currentChatId ? (
             <EmptyState onCreateChat={createNewChat} />
           ) : (
@@ -110,16 +109,16 @@ export default function Home() {
             </div>
           )}
         </div>
-
-        {currentChatId && isPrepared && (
-          <MessageInput
-            question={question}
-            loading={loading}
-            onQuestionChange={handleQuestionChange}
-            onSubmit={handleAskQuestion}
-          />
-        )}
       </div>
+
+      {currentChatId && isPrepared && (
+        <MessageInput
+          question={question}
+          loading={loading}
+          onQuestionChange={handleQuestionChange}
+          onSubmit={handleAskQuestion}
+        />
+      )}
     </div>
   );
 }

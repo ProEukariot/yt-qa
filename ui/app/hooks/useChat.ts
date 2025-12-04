@@ -4,103 +4,161 @@ import { ChatData, Message } from '../types/chat';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-export function useChat() {
-  const [chats, setChats] = useState<Chat[]>([]);
-  const [currentChatId, setCurrentChatId] = useState<string | null>(null);
-  const [chatData, setChatData] = useState<Record<string, ChatData>>({});
+interface ChatState {
+  chats: Chat[];
+  currentChatId: string | null;
+  chatData: Record<string, ChatData>;
+}
 
-  const [youtubeUrl, setYoutubeUrl] = useState('');
-  const [question, setQuestion] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [preparingUrl, setPreparingUrl] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+interface CurrentChatFormState {
+  youtubeUrl: string;
+  question: string;
+  loading: boolean;
+  preparingUrl: boolean;
+  error: string | null;
+}
+
+export function useChat() {
+  const [chatState, setChatState] = useState<ChatState>({
+    chats: [],
+    currentChatId: null,
+    chatData: {},
+  });
+
+  const [formState, setFormState] = useState<CurrentChatFormState>({
+    youtubeUrl: '',
+    question: '',
+    loading: false,
+    preparingUrl: false,
+    error: null,
+  });
 
   const createNewChat = () => {
     const newChatId = `chat_${Date.now()}`;
     const newChat: Chat = {
       id: newChatId,
-      name: `Chat ${chats.length + 1}`,
+      name: `Chat ${chatState.chats.length + 1}`,
       createdAt: new Date(),
     };
 
-    setChats([newChat, ...chats]);
-    setChatData({
-      ...chatData,
-      [newChatId]: {
-        messages: [],
-        youtubeUrl: '',
-        isPrepared: false,
-        loading: false,
-        preparingUrl: false,
-        error: null,
-        question: '',
+    // Batch all state updates in a single transition to prevent multiple renders
+    setChatState(prev => ({
+      chats: [newChat, ...prev.chats],
+      currentChatId: newChatId,
+      chatData: {
+        ...prev.chatData,
+        [newChatId]: {
+          messages: [],
+          youtubeUrl: '',
+          isPrepared: false,
+          loading: false,
+          preparingUrl: false,
+          error: null,
+          question: '',
+        }
       }
+    }));
+    setFormState({
+      youtubeUrl: '',
+      question: '',
+      loading: false,
+      preparingUrl: false,
+      error: null,
     });
-    setCurrentChatId(newChatId);
-    setYoutubeUrl('');
-    setError(null);
   };
 
   const selectChat = (chatId: string) => {
-    setCurrentChatId(chatId);
-    const data = chatData[chatId];
+    setChatState(prev => ({ ...prev, currentChatId: chatId }));
+    const data = chatState.chatData[chatId];
     if (data) {
-      setYoutubeUrl(data.youtubeUrl || '');
-      setLoading(data.loading || false);
-      setPreparingUrl(data.preparingUrl || false);
-      setError(data.error || null);
-      setQuestion(data.question || '');
+      setFormState({
+        youtubeUrl: data.youtubeUrl || '',
+        question: data.question || '',
+        loading: data.loading || false,
+        preparingUrl: data.preparingUrl || false,
+        error: data.error || null,
+      });
     } else {
-      setYoutubeUrl('');
-      setLoading(false);
-      setPreparingUrl(false);
-      setError(null);
-      setQuestion('');
+      setFormState({
+        youtubeUrl: '',
+        question: '',
+        loading: false,
+        preparingUrl: false,
+        error: null,
+      });
     }
   };
 
   const deleteChat = (chatId: string) => {
-    const updatedChats = chats.filter(chat => chat.id !== chatId);
-    setChats(updatedChats);
-
-    const updatedChatData = { ...chatData };
+    const updatedChats = chatState.chats.filter(chat => chat.id !== chatId);
+    const updatedChatData = { ...chatState.chatData };
     delete updatedChatData[chatId];
-    setChatData(updatedChatData);
+
+    setChatState(prev => ({
+      chats: updatedChats,
+      chatData: updatedChatData,
+      currentChatId: prev.currentChatId === chatId ? null : prev.currentChatId,
+    }));
 
     localStorage.setItem('chats', JSON.stringify(updatedChats));
     localStorage.setItem('chatData', JSON.stringify(updatedChatData));
 
-    if (currentChatId === chatId) {
-      setCurrentChatId(null);
-      setYoutubeUrl('');
-      setLoading(false);
-      setPreparingUrl(false);
-      setError(null);
-      setQuestion('');
+    if (chatState.currentChatId === chatId) {
+      setFormState({
+        youtubeUrl: '',
+        question: '',
+        loading: false,
+        preparingUrl: false,
+        error: null,
+      });
     }
   };
 
+  const deleteAllChats = () => {
+    setChatState({
+      chats: [],
+      chatData: {},
+      currentChatId: null,
+    });
+    setFormState({
+      youtubeUrl: '',
+      question: '',
+      loading: false,
+      preparingUrl: false,
+      error: null,
+    });
+
+    localStorage.removeItem('chats');
+    localStorage.removeItem('chatData');
+  };
+
   const handleYoutubeUrlChange = (value: string) => {
-    setYoutubeUrl(value);
-    if (currentChatId) {
-      setChatData(prev => ({
+    setFormState(prev => ({ ...prev, youtubeUrl: value }));
+    if (chatState.currentChatId) {
+      setChatState(prev => ({
         ...prev,
-        [currentChatId]: {
-          ...prev[currentChatId],
-          youtubeUrl: value,
+        chatData: {
+          ...prev.chatData,
+          [prev.currentChatId!]: {
+            ...prev.chatData[prev.currentChatId!],
+            youtubeUrl: value,
+          }
         }
       }));
     }
   };
 
   const handleQuestionChange = (value: string) => {
-    setQuestion(value);
-    if (currentChatId) {
-      setChatData(prev => ({
+    setFormState(prev => ({ ...prev, question: value }));
+    if (chatState.currentChatId) {
+      setChatState(prev => ({
         ...prev,
-        [currentChatId]: {
-          ...prev[currentChatId],
-          question: value,
+        chatData: {
+          ...prev.chatData,
+          [prev.currentChatId!]: {
+            ...prev.chatData[prev.currentChatId!],
+            question: value,
+          }
         }
       }));
     }
@@ -109,28 +167,25 @@ export function useChat() {
   const handlePrepareUrl = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!currentChatId) {
+    if (!chatState.currentChatId) {
       const errorMsg = 'Please create a chat first';
-      setError(errorMsg);
-      setChatData(prev => ({
-        ...prev,
-        [currentChatId!]: {
-          ...prev[currentChatId!],
-          error: errorMsg,
-        }
-      }));
+      setFormState(prev => ({ ...prev, error: errorMsg }));
       return;
     }
 
-    setPreparingUrl(true);
-    setError(null);
+    const currentChatId = chatState.currentChatId;
+    const youtubeUrl = formState.youtubeUrl;
 
-    setChatData(prev => ({
+    setFormState(prev => ({ ...prev, preparingUrl: true, error: null }));
+    setChatState(prev => ({
       ...prev,
-      [currentChatId]: {
-        ...prev[currentChatId],
-        preparingUrl: true,
-        error: null,
+      chatData: {
+        ...prev.chatData,
+        [currentChatId]: {
+          ...prev.chatData[currentChatId],
+          preparingUrl: true,
+          error: null,
+        }
       }
     }));
 
@@ -146,21 +201,23 @@ export function useChat() {
       const data = await response.json();
 
       if (response.ok) {
-        setChatData(prev => ({
+        setChatState(prev => ({
           ...prev,
-          [currentChatId]: {
-            ...prev[currentChatId],
-            youtubeUrl: youtubeUrl,
-            isPrepared: true,
-            preparingUrl: false,
+          chats: prev.chats.map(chat =>
+            chat.id === currentChatId
+              ? { ...chat, name: `Video Chat`, youtubeUrl }
+              : chat
+          ),
+          chatData: {
+            ...prev.chatData,
+            [currentChatId]: {
+              ...prev.chatData[currentChatId],
+              youtubeUrl: youtubeUrl,
+              isPrepared: true,
+              preparingUrl: false,
+            }
           }
         }));
-
-        setChats(chats.map(chat =>
-          chat.id === currentChatId
-            ? { ...chat, name: `Video Chat`, youtubeUrl }
-            : chat
-        ));
 
         const systemMessage: Message = {
           role: 'assistant',
@@ -168,92 +225,109 @@ export function useChat() {
           timestamp: new Date(),
         };
 
-        setChatData(prev => ({
+        setChatState(prev => ({
           ...prev,
-          [currentChatId]: {
-            ...prev[currentChatId],
-            messages: [...(prev[currentChatId]?.messages || []), systemMessage],
+          chatData: {
+            ...prev.chatData,
+            [currentChatId]: {
+              ...prev.chatData[currentChatId],
+              messages: [...(prev.chatData[currentChatId]?.messages || []), systemMessage],
+            }
           }
         }));
+
+        setFormState(prev => ({ ...prev, preparingUrl: false }));
       } else {
         const errorMsg = data.error || 'Failed to prepare URL';
-        setError(errorMsg);
-        setChatData(prev => ({
+        setFormState(prev => ({ ...prev, preparingUrl: false, error: errorMsg }));
+        setChatState(prev => ({
           ...prev,
-          [currentChatId]: {
-            ...prev[currentChatId],
-            preparingUrl: false,
-            error: errorMsg,
+          chatData: {
+            ...prev.chatData,
+            [currentChatId]: {
+              ...prev.chatData[currentChatId],
+              preparingUrl: false,
+              error: errorMsg,
+            }
           }
         }));
       }
     } catch (err) {
       const errorMsg = 'Failed to connect to the API. Make sure the backend is running.';
-      setError(errorMsg);
-      setChatData(prev => ({
+      setFormState(prev => ({ ...prev, preparingUrl: false, error: errorMsg }));
+      setChatState(prev => ({
         ...prev,
-        [currentChatId]: {
-          ...prev[currentChatId],
-          preparingUrl: false,
-          error: errorMsg,
+        chatData: {
+          ...prev.chatData,
+          [currentChatId]: {
+            ...prev.chatData[currentChatId],
+            preparingUrl: false,
+            error: errorMsg,
+          }
         }
       }));
-    } finally {
-      setPreparingUrl(false);
     }
   };
 
   const handleAskQuestion = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!currentChatId) {
+    if (!chatState.currentChatId) {
       const errorMsg = 'Please create a chat first';
-      setError(errorMsg);
+      setFormState(prev => ({ ...prev, error: errorMsg }));
       return;
     }
 
-    if (!chatData[currentChatId]?.isPrepared) {
+    const currentChatId = chatState.currentChatId;
+
+    if (!chatState.chatData[currentChatId]?.isPrepared) {
       const errorMsg = 'Please prepare a YouTube URL first';
-      setError(errorMsg);
-      setChatData(prev => ({
+      setFormState(prev => ({ ...prev, error: errorMsg }));
+      setChatState(prev => ({
         ...prev,
-        [currentChatId]: {
-          ...prev[currentChatId],
-          error: errorMsg,
+        chatData: {
+          ...prev.chatData,
+          [currentChatId]: {
+            ...prev.chatData[currentChatId],
+            error: errorMsg,
+          }
         }
       }));
       return;
     }
 
-    setLoading(true);
-    setError(null);
+    const currentQuestion = formState.question;
 
-    setChatData(prev => ({
+    setFormState(prev => ({ ...prev, loading: true, error: null, question: '' }));
+    setChatState(prev => ({
       ...prev,
-      [currentChatId]: {
-        ...prev[currentChatId],
-        loading: true,
-        error: null,
-        question: '',
+      chatData: {
+        ...prev.chatData,
+        [currentChatId]: {
+          ...prev.chatData[currentChatId],
+          loading: true,
+          error: null,
+          question: '',
+        }
       }
     }));
 
     const userMessage: Message = {
       role: 'user',
-      content: question,
+      content: currentQuestion,
       timestamp: new Date(),
     };
 
-    setChatData(prev => ({
+    setChatState(prev => ({
       ...prev,
-      [currentChatId]: {
-        ...prev[currentChatId],
-        messages: [...(prev[currentChatId]?.messages || []), userMessage],
+      chatData: {
+        ...prev.chatData,
+        [currentChatId]: {
+          ...prev.chatData[currentChatId],
+          messages: [...(prev.chatData[currentChatId]?.messages || []), userMessage],
+        }
       }
     }));
-
-    const currentQuestion = question;
-    setQuestion('');
 
     try {
       const response = await fetch(`${API_BASE_URL}/ask/${currentChatId}`, {
@@ -273,58 +347,67 @@ export function useChat() {
           timestamp: new Date(),
         };
 
-        setChatData(prev => ({
+        setChatState(prev => ({
           ...prev,
-          [currentChatId]: {
-            ...prev[currentChatId],
-            messages: [...(prev[currentChatId]?.messages || []), assistantMessage],
-            loading: false,
+          chatData: {
+            ...prev.chatData,
+            [currentChatId]: {
+              ...prev.chatData[currentChatId],
+              messages: [...(prev.chatData[currentChatId]?.messages || []), assistantMessage],
+              loading: false,
+            }
           }
         }));
+        setFormState(prev => ({ ...prev, loading: false }));
       } else {
         const errorMsg = data.error || 'Failed to get answer';
-        setError(errorMsg);
-        setChatData(prev => ({
+        setFormState(prev => ({ ...prev, loading: false, error: errorMsg }));
+        setChatState(prev => ({
           ...prev,
-          [currentChatId]: {
-            ...prev[currentChatId],
-            messages: prev[currentChatId].messages.slice(0, -1),
-            loading: false,
-            error: errorMsg,
+          chatData: {
+            ...prev.chatData,
+            [currentChatId]: {
+              ...prev.chatData[currentChatId],
+              messages: prev.chatData[currentChatId].messages.slice(0, -1),
+              loading: false,
+              error: errorMsg,
+            }
           }
         }));
       }
     } catch (err) {
       const errorMsg = 'Failed to connect to the API. Make sure the backend is running.';
-      setError(errorMsg);
-      setChatData(prev => ({
+      setFormState(prev => ({ ...prev, loading: false, error: errorMsg }));
+      setChatState(prev => ({
         ...prev,
-        [currentChatId]: {
-          ...prev[currentChatId],
-          messages: prev[currentChatId].messages.slice(0, -1),
-          loading: false,
-          error: errorMsg,
+        chatData: {
+          ...prev.chatData,
+          [currentChatId]: {
+            ...prev.chatData[currentChatId],
+            messages: prev.chatData[currentChatId].messages.slice(0, -1),
+            loading: false,
+            error: errorMsg,
+          }
         }
       }));
-    } finally {
-      setLoading(false);
     }
   };
 
   return {
-    chats,
-    setChats,
-    currentChatId,
-    chatData,
-    setChatData,
-    youtubeUrl,
-    question,
-    loading,
-    preparingUrl,
-    error,
+    chats: chatState.chats,
+    setChats: (chats: Chat[]) => setChatState(prev => ({ ...prev, chats })),
+    currentChatId: chatState.currentChatId,
+    chatData: chatState.chatData,
+    setChatData: (chatData: Record<string, ChatData>) => setChatState(prev => ({ ...prev, chatData })),
+    youtubeUrl: formState.youtubeUrl,
+    question: formState.question,
+    loading: formState.loading,
+    preparingUrl: formState.preparingUrl,
+    error: formState.error,
     createNewChat,
     selectChat,
     deleteChat,
+    deleteAllChats,
     handleYoutubeUrlChange,
     handleQuestionChange,
     handlePrepareUrl,

@@ -30,7 +30,7 @@ export default function ChatItem({
     return (
       <button
         onClick={() => onSelect(id)}
-        className={`w-full p-3 rounded-lg transition-colors ${
+        className={`w-full p-3 rounded-lg ${
           isSelected
             ? 'bg-gray-900 text-white'
             : 'text-gray-700 hover:bg-gray-100'
@@ -53,7 +53,7 @@ export default function ChatItem({
 
   return (
     <div
-      className={`group relative rounded-lg transition-colors ${
+      className={`group relative rounded-lg ${
         isSelected
           ? 'bg-gray-900 text-white'
           : 'text-gray-700 hover:bg-gray-100'
@@ -74,7 +74,7 @@ export default function ChatItem({
       </button>
       <button
         onClick={handleDelete}
-        className={`absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded opacity-0 group-hover:opacity-100 transition-opacity ${
+        className={`absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded opacity-0 group-hover:opacity-100 ${
           isSelected
             ? 'hover:bg-gray-800 text-gray-300 hover:text-white'
             : 'hover:bg-gray-200 text-gray-500 hover:text-gray-900'
