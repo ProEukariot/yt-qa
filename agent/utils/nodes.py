@@ -2,7 +2,11 @@ from utils.state import AgentState
 from langchain_openai import ChatOpenAI
 from langchain.messages import SystemMessage
 from main import vector_stores
+from langgraph.prebuilt import ToolNode
+from utils.tools import tavily_search_tool
 
+toolkit = [tavily_search_tool]
+tool_node = ToolNode(toolkit)
 
 def retrieve(state: AgentState):
     """
@@ -41,10 +45,13 @@ def retrieve(state: AgentState):
 
 def generate(state: AgentState):
     systemMessage = SystemMessage(
-        f"You are helpful assistant. Use the context to provide the answer. If there is no information in the context, say you dont know. Context: {state['context']}"
+        f"You are a helpful assistant. Use the context provided to answer the question. If the context is insufficient, use your available tools (like the search tool) to find the answer. Context: {state['context']}"
     )
     model = ChatOpenAI(model="gpt-4o-mini")
+    model = model.bind_tools(toolkit)
 
     response = model.invoke([systemMessage] + state["messages"])
 
     return {"messages": [response]}
+
+
