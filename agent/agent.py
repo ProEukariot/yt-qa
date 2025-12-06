@@ -1,4 +1,4 @@
-from utils.nodes import tool_node, retrieve, generate
+from utils.nodes import tool_node, retrieve, generate, approval
 from langgraph.graph import StateGraph, START, END
 from langchain.messages import HumanMessage
 from utils.state import AgentState
@@ -15,6 +15,7 @@ workflow = StateGraph(AgentState)
 workflow.add_node("tools", tool_node)
 workflow.add_node("retrieve", retrieve)
 workflow.add_node("generate", generate)
+workflow.add_node("approval", approval)
 
 workflow.add_edge(START, "retrieve")
 workflow.add_edge("retrieve", "generate")
@@ -29,7 +30,7 @@ def router(state: AgentState):
     # Check if the last message has tool calls (only AI messages have tool_calls)
     tool_calls = getattr(last_message, "tool_calls", [])
     if tool_calls:
-        return "tools"
+        return "approval"  # Route to approval node first
     else:
         return END
 

@@ -23,6 +23,7 @@ export default function Home() {
     loading,
     preparingUrl,
     error,
+    isProcessingApproval,
     createNewChat,
     selectChat,
     deleteChat,
@@ -31,6 +32,8 @@ export default function Home() {
     handleQuestionChange,
     handlePrepareUrl,
     handleAskQuestion,
+    handleApprove,
+    handleReject,
   } = useChat();
 
   // Load chats from localStorage on mount
@@ -103,7 +106,13 @@ export default function Home() {
                 />
               )}
 
-              <MessageList messages={currentMessages} loading={loading} />
+              <MessageList
+                messages={currentMessages}
+                loading={loading}
+                onApprove={handleApprove}
+                onReject={handleReject}
+                isProcessingApproval={isProcessingApproval}
+              />
 
               {error && <ErrorDisplay error={error} />}
             </div>

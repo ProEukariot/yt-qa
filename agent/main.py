@@ -35,18 +35,18 @@ class AskQuestionRequest(BaseModel):
     question: str
 
 
+class ResumeRequest(BaseModel):
+    approved: bool
+
+
 @app.get("/")
 def hello_world():
     return {"message": "Hello World"}
 
 
-@app.post("/prepare-url/{thread_id}")
+@app.post("/upload-video/{thread_id}")
 def prepare_url(thread_id: str, request: PrepareUrlRequest):
     url = request.url
-
-    print("*" * 50)
-    print("URL____>>>>>>", url)
-    print("*" * 50)
 
     # Load YouTube transcript
     loader = YoutubeLoader.from_youtube_url(
@@ -77,7 +77,7 @@ def prepare_url(thread_id: str, request: PrepareUrlRequest):
     )
 
     return {
-        "message": "URL prepared successfully",
+        "message": "Video uploaded successfully",
         "thread_id": thread_id,
         "url": url,
         "num_documents": len(docs),
@@ -85,7 +85,7 @@ def prepare_url(thread_id: str, request: PrepareUrlRequest):
     }
 
 
-@app.post("/ask/{thread_id}")
+@app.post("/run/{thread_id}")
 def ask_question(thread_id: str, request: AskQuestionRequest):
     from agent import agent
     from utils.state import AgentState
@@ -104,15 +104,77 @@ def ask_question(thread_id: str, request: AskQuestionRequest):
         "thread_id": thread_id,
     }
 
-    # Invoke the agent graph
-    response = agent.invoke(init_state, {"configurable": {"thread_id": thread_id}})
+    config = {"configurable": {"thread_id": thread_id}}
 
-    # Extract the final answer from the messages
+    # Invoke the agent graph
+    response = agent.invoke(init_state, config)  # type: ignore
+
+    # Check if the agent is interrupted
+    state_snapshot = agent.get_state(config)  # type: ignore
+
+    if state_snapshot.next:
+        # Agent is interrupted - extract interrupt data
+        interrupt_data = None
+        current_node = None
+
+        if state_snapshot.tasks:
+            task = state_snapshot.tasks[0]
+            current_node = task.name
+            if task.interrupts:
+                interrupt_data = task.interrupts[0].value
+
+        return {
+            "status": "interrupted",
+            "thread_id": thread_id,
+            "question": request.question,
+            "current_node": current_node,
+            "interrupt_data": interrupt_data,
+        }
+
+    # Execution completed - extract the final answer
     final_messages = response.get("messages", [])
     answer = final_messages[-1].content if final_messages else "No response generated"
 
     return {
+        "status": "completed",
         "question": request.question,
+        "thread_id": thread_id,
+        "answer": answer,
+        "context": response.get("context", []),
+    }
+
+
+@app.post("/resume/{thread_id}")
+def resume_agent(thread_id: str, request: ResumeRequest):
+    from agent import agent
+    from langgraph.types import Command
+
+    # Check if vector store exists for the thread_id
+    if thread_id not in vector_stores:
+        return {
+            "error": f"No vector store found for thread_id: {thread_id}. Please prepare the URL first.",
+            "thread_id": thread_id,
+        }
+
+    config = {"configurable": {"thread_id": thread_id}}
+
+    # Check if there's an interrupted state to resume from
+    state_snapshot = agent.get_state(config)  # type: ignore
+    if not state_snapshot.next:
+        return {
+            "error": "No interrupted state found for this thread_id. Nothing to resume.",
+            "thread_id": thread_id,
+        }
+
+    # Resume the agent with the approval decision
+    response = agent.invoke(Command(resume=request.approved), config)  # type: ignore
+
+    # Execution completed (only single interrupt expected)
+    final_messages = response.get("messages", [])
+    answer = final_messages[-1].content if final_messages else "No response generated"
+
+    return {
+        "status": "completed",
         "thread_id": thread_id,
         "answer": answer,
         "context": response.get("context", []),

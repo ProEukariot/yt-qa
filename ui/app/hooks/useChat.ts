@@ -16,6 +16,7 @@ interface CurrentChatFormState {
   loading: boolean;
   preparingUrl: boolean;
   error: string | null;
+  isProcessingApproval: boolean;
 }
 
 export function useChat() {
@@ -31,6 +32,7 @@ export function useChat() {
     loading: false,
     preparingUrl: false,
     error: null,
+    isProcessingApproval: false,
   });
 
   const createNewChat = () => {
@@ -64,6 +66,7 @@ export function useChat() {
       loading: false,
       preparingUrl: false,
       error: null,
+      isProcessingApproval: false,
     });
   };
 
@@ -77,6 +80,7 @@ export function useChat() {
         loading: data.loading || false,
         preparingUrl: data.preparingUrl || false,
         error: data.error || null,
+        isProcessingApproval: false,
       });
     } else {
       setFormState({
@@ -85,6 +89,7 @@ export function useChat() {
         loading: false,
         preparingUrl: false,
         error: null,
+        isProcessingApproval: false,
       });
     }
   };
@@ -110,6 +115,7 @@ export function useChat() {
         loading: false,
         preparingUrl: false,
         error: null,
+        isProcessingApproval: false,
       });
     }
   };
@@ -126,6 +132,7 @@ export function useChat() {
       loading: false,
       preparingUrl: false,
       error: null,
+      isProcessingApproval: false,
     });
 
     localStorage.removeItem('chats');
@@ -190,7 +197,7 @@ export function useChat() {
     }));
 
     try {
-      const response = await fetch(`${API_BASE_URL}/prepare-url/${currentChatId}`, {
+      const response = await fetch(`${API_BASE_URL}/upload-video/${currentChatId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -330,7 +337,7 @@ export function useChat() {
     }));
 
     try {
-      const response = await fetch(`${API_BASE_URL}/ask/${currentChatId}`, {
+      const response = await fetch(`${API_BASE_URL}/run/${currentChatId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -341,24 +348,52 @@ export function useChat() {
       const data = await response.json();
 
       if (response.ok) {
-        const assistantMessage: Message = {
-          role: 'assistant',
-          content: data.answer,
-          timestamp: new Date(),
-        };
-
-        setChatState(prev => ({
-          ...prev,
-          chatData: {
-            ...prev.chatData,
-            [currentChatId]: {
-              ...prev.chatData[currentChatId],
-              messages: [...(prev.chatData[currentChatId]?.messages || []), assistantMessage],
-              loading: false,
+        if (data.status === 'interrupted' && data.interrupt_data) {
+          // Agent is waiting for approval
+          const approvalMessage: Message = {
+            role: 'approval',
+            content: 'Approval required for tool execution',
+            timestamp: new Date(),
+            approvalData: {
+              question: data.interrupt_data.question,
+              tool_calls: data.interrupt_data.tool_calls,
+              threadId: currentChatId,
             }
-          }
-        }));
-        setFormState(prev => ({ ...prev, loading: false }));
+          };
+
+          setChatState(prev => ({
+            ...prev,
+            chatData: {
+              ...prev.chatData,
+              [currentChatId]: {
+                ...prev.chatData[currentChatId],
+                messages: [...(prev.chatData[currentChatId]?.messages || []), approvalMessage],
+                loading: false,
+              }
+            }
+          }));
+          setFormState(prev => ({ ...prev, loading: false }));
+        } else if (data.status === 'completed') {
+          // Agent completed successfully
+          const assistantMessage: Message = {
+            role: 'assistant',
+            content: data.answer,
+            timestamp: new Date(),
+          };
+
+          setChatState(prev => ({
+            ...prev,
+            chatData: {
+              ...prev.chatData,
+              [currentChatId]: {
+                ...prev.chatData[currentChatId],
+                messages: [...(prev.chatData[currentChatId]?.messages || []), assistantMessage],
+                loading: false,
+              }
+            }
+          }));
+          setFormState(prev => ({ ...prev, loading: false }));
+        }
       } else {
         const errorMsg = data.error || 'Failed to get answer';
         setFormState(prev => ({ ...prev, loading: false, error: errorMsg }));
@@ -393,6 +428,59 @@ export function useChat() {
     }
   };
 
+  const handleApproval = async (threadId: string, approved: boolean) => {
+    if (!threadId) return;
+
+    setFormState(prev => ({ ...prev, isProcessingApproval: true, error: null }));
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/resume/${threadId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ approved }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.status === 'completed') {
+        // Remove the approval message and add the assistant's response
+        setChatState(prev => {
+          const currentMessages = prev.chatData[threadId]?.messages || [];
+          const messagesWithoutApproval = currentMessages.filter(msg => msg.role !== 'approval');
+
+          const assistantMessage: Message = {
+            role: 'assistant',
+            content: approved ? data.answer : 'Tool execution was rejected.',
+            timestamp: new Date(),
+          };
+
+          return {
+            ...prev,
+            chatData: {
+              ...prev.chatData,
+              [threadId]: {
+                ...prev.chatData[threadId],
+                messages: [...messagesWithoutApproval, assistantMessage],
+              }
+            }
+          };
+        });
+        setFormState(prev => ({ ...prev, isProcessingApproval: false }));
+      } else {
+        const errorMsg = data.error || 'Failed to process approval';
+        setFormState(prev => ({ ...prev, isProcessingApproval: false, error: errorMsg }));
+      }
+    } catch (err) {
+      const errorMsg = 'Failed to connect to the API. Make sure the backend is running.';
+      setFormState(prev => ({ ...prev, isProcessingApproval: false, error: errorMsg }));
+    }
+  };
+
+  const handleApprove = (threadId: string) => handleApproval(threadId, true);
+  const handleReject = (threadId: string) => handleApproval(threadId, false);
+
   return {
     chats: chatState.chats,
     setChats: (chats: Chat[]) => setChatState(prev => ({ ...prev, chats })),
@@ -404,6 +492,7 @@ export function useChat() {
     loading: formState.loading,
     preparingUrl: formState.preparingUrl,
     error: formState.error,
+    isProcessingApproval: formState.isProcessingApproval,
     createNewChat,
     selectChat,
     deleteChat,
@@ -412,5 +501,7 @@ export function useChat() {
     handleQuestionChange,
     handlePrepareUrl,
     handleAskQuestion,
+    handleApprove,
+    handleReject,
   };
 }

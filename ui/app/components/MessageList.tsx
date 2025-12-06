@@ -1,41 +1,65 @@
 import { Message } from '../types/chat';
+import ApprovalRequest from './ApprovalRequest';
 
 interface MessageListProps {
   messages: Message[];
   loading: boolean;
+  onApprove?: (threadId: string) => void;
+  onReject?: (threadId: string) => void;
+  isProcessingApproval?: boolean;
 }
 
-export default function MessageList({ messages, loading }: MessageListProps) {
+export default function MessageList({
+  messages,
+  loading,
+  onApprove,
+  onReject,
+  isProcessingApproval = false
+}: MessageListProps) {
   if (messages.length === 0 && !loading) {
     return null;
   }
 
   return (
     <div className="space-y-4 mb-6">
-      {messages.map((message, index) => (
-        <div
-          key={index}
-          className={`p-4 rounded-lg ${
-            message.role === 'user'
-              ? 'bg-blue-50 border border-blue-200 ml-8'
-              : 'bg-gray-50 border border-gray-200 mr-8'
-          }`}
-        >
-          <div className="flex items-start gap-3">
-            <div className={`font-semibold text-sm ${
-              message.role === 'user' ? 'text-blue-700' : 'text-gray-700'
-            }`}>
-              {message.role === 'user' ? 'You' : 'Assistant'}
-            </div>
-            <div className="flex-1">
-              <p className="text-gray-900 whitespace-pre-wrap">{message.content}</p>
-              <p className="text-xs text-gray-500 mt-2">
-                {message.timestamp.toLocaleTimeString()}
-              </p>
+      {messages.map((message, index) => {
+        if (message.role === 'approval' && message.approvalData) {
+          return (
+            <ApprovalRequest
+              key={index}
+              approvalData={message.approvalData}
+              onApprove={onApprove || (() => {})}
+              onReject={onReject || (() => {})}
+              isProcessing={isProcessingApproval}
+            />
+          );
+        }
+
+        return (
+          <div
+            key={index}
+            className={`p-4 rounded-lg ${
+              message.role === 'user'
+                ? 'bg-blue-50 border border-blue-200 ml-8'
+                : 'bg-gray-50 border border-gray-200 mr-8'
+            }`}
+          >
+            <div className="flex items-start gap-3">
+              <div className={`font-semibold text-sm ${
+                message.role === 'user' ? 'text-blue-700' : 'text-gray-700'
+              }`}>
+                {message.role === 'user' ? 'You' : 'Assistant'}
+              </div>
+              <div className="flex-1">
+                <p className="text-gray-900 whitespace-pre-wrap">{message.content}</p>
+                <p className="text-xs text-gray-500 mt-2">
+                  {message.timestamp.toLocaleTimeString()}
+                </p>
+              </div>
             </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
       {loading && (
         <div className="p-4 rounded-lg bg-gray-50 border border-gray-200 mr-8">
           <div className="flex items-start gap-3">
