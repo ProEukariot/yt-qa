@@ -77,6 +77,7 @@ export default function Home() {
 
   const currentMessages = currentChatId ? chatData[currentChatId]?.messages || [] : [];
   const isPrepared = currentChatId ? chatData[currentChatId]?.isPrepared || false : false;
+  const streamingStatus = currentChatId ? chatData[currentChatId]?.streamingStatus : undefined;
 
   return (
     <div className="min-h-screen bg-white flex">
@@ -112,6 +113,7 @@ export default function Home() {
                 onApprove={handleApprove}
                 onReject={handleReject}
                 isProcessingApproval={isProcessingApproval}
+                streamingStatus={streamingStatus}
               />
 
               {error && <ErrorDisplay error={error} />}

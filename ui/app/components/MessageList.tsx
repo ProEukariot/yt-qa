@@ -1,5 +1,6 @@
-import { Message } from '../types/chat';
+import { Message, StreamingStatus } from '../types/chat';
 import ApprovalRequest from './ApprovalRequest';
+import StreamingStatusComponent from './StreamingStatus';
 
 interface MessageListProps {
   messages: Message[];
@@ -7,6 +8,7 @@ interface MessageListProps {
   onApprove?: (threadId: string) => void;
   onReject?: (threadId: string) => void;
   isProcessingApproval?: boolean;
+  streamingStatus?: StreamingStatus;
 }
 
 export default function MessageList({
@@ -14,7 +16,8 @@ export default function MessageList({
   loading,
   onApprove,
   onReject,
-  isProcessingApproval = false
+  isProcessingApproval = false,
+  streamingStatus
 }: MessageListProps) {
   if (messages.length === 0 && !loading) {
     return null;
@@ -60,7 +63,10 @@ export default function MessageList({
           </div>
         );
       })}
-      {loading && (
+      {streamingStatus && (
+        <StreamingStatusComponent streamingStatus={streamingStatus} />
+      )}
+      {loading && !streamingStatus && (
         <div className="p-4 rounded-lg bg-gray-50 border border-gray-200 mr-8">
           <div className="flex items-start gap-3">
             <div className="font-semibold text-sm text-gray-700">Assistant</div>

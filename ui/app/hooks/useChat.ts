@@ -315,6 +315,7 @@ export function useChat() {
           loading: true,
           error: null,
           question: '',
+          streamingStatus: { currentNode: null, nodeHistory: [] },
         }
       }
     }));
@@ -345,70 +346,159 @@ export function useChat() {
         body: JSON.stringify({ question: currentQuestion }),
       });
 
-      const data = await response.json();
+      if (!response.ok || !response.body) {
+        throw new Error('Failed to get response');
+      }
 
-      if (response.ok) {
-        if (data.status === 'interrupted' && data.interrupt_data) {
-          // Agent is waiting for approval
-          const approvalMessage: Message = {
-            role: 'approval',
-            content: 'Approval required for tool execution',
-            timestamp: new Date(),
-            approvalData: {
-              question: data.interrupt_data.question,
-              tool_calls: data.interrupt_data.tool_calls,
-              threadId: currentChatId,
-            }
-          };
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let streamingMessage: Message = {
+        role: 'assistant',
+        content: '',
+        timestamp: new Date(),
+        isStreaming: true,
+      };
+      let messageAdded = false;
 
-          setChatState(prev => ({
-            ...prev,
-            chatData: {
-              ...prev.chatData,
-              [currentChatId]: {
-                ...prev.chatData[currentChatId],
-                messages: [...(prev.chatData[currentChatId]?.messages || []), approvalMessage],
-                loading: false,
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = JSON.parse(line.slice(6));
+
+            if (data.type === 'node_start') {
+              // Update streaming status to show current node
+              setChatState(prev => ({
+                ...prev,
+                chatData: {
+                  ...prev.chatData,
+                  [currentChatId]: {
+                    ...prev.chatData[currentChatId],
+                    streamingStatus: {
+                      currentNode: data.node,
+                      nodeHistory: [...(prev.chatData[currentChatId]?.streamingStatus?.nodeHistory || []), data.node],
+                    }
+                  }
+                }
+              }));
+            } else if (data.type === 'node_end') {
+              // Node completed
+              setChatState(prev => ({
+                ...prev,
+                chatData: {
+                  ...prev.chatData,
+                  [currentChatId]: {
+                    ...prev.chatData[currentChatId],
+                    streamingStatus: {
+                      ...prev.chatData[currentChatId].streamingStatus!,
+                      currentNode: null,
+                    }
+                  }
+                }
+              }));
+            } else if (data.type === 'token') {
+              // Add streaming message if not already added
+              if (!messageAdded) {
+                setChatState(prev => ({
+                  ...prev,
+                  chatData: {
+                    ...prev.chatData,
+                    [currentChatId]: {
+                      ...prev.chatData[currentChatId],
+                      messages: [...(prev.chatData[currentChatId]?.messages || []), streamingMessage],
+                    }
+                  }
+                }));
+                messageAdded = true;
               }
-            }
-          }));
-          setFormState(prev => ({ ...prev, loading: false }));
-        } else if (data.status === 'completed') {
-          // Agent completed successfully
-          const assistantMessage: Message = {
-            role: 'assistant',
-            content: data.answer,
-            timestamp: new Date(),
-          };
 
-          setChatState(prev => ({
-            ...prev,
-            chatData: {
-              ...prev.chatData,
-              [currentChatId]: {
-                ...prev.chatData[currentChatId],
-                messages: [...(prev.chatData[currentChatId]?.messages || []), assistantMessage],
-                loading: false,
-              }
-            }
-          }));
-          setFormState(prev => ({ ...prev, loading: false }));
-        }
-      } else {
-        const errorMsg = data.error || 'Failed to get answer';
-        setFormState(prev => ({ ...prev, loading: false, error: errorMsg }));
-        setChatState(prev => ({
-          ...prev,
-          chatData: {
-            ...prev.chatData,
-            [currentChatId]: {
-              ...prev.chatData[currentChatId],
-              messages: prev.chatData[currentChatId].messages.slice(0, -1),
-              loading: false,
-              error: errorMsg,
+              // Update streaming message content
+              streamingMessage.content += data.content;
+              setChatState(prev => ({
+                ...prev,
+                chatData: {
+                  ...prev.chatData,
+                  [currentChatId]: {
+                    ...prev.chatData[currentChatId],
+                    messages: prev.chatData[currentChatId].messages.map((msg, idx) =>
+                      idx === prev.chatData[currentChatId].messages.length - 1 && msg.isStreaming
+                        ? { ...msg, content: streamingMessage.content }
+                        : msg
+                    ),
+                  }
+                }
+              }));
+            } else if (data.type === 'interrupted') {
+              // Agent is waiting for approval
+              const approvalMessage: Message = {
+                role: 'approval',
+                content: 'Approval required for tool execution',
+                timestamp: new Date(),
+                approvalData: {
+                  question: data.interrupt_data.question,
+                  tool_calls: data.interrupt_data.tool_calls,
+                  threadId: currentChatId,
+                }
+              };
+
+              setChatState(prev => ({
+                ...prev,
+                chatData: {
+                  ...prev.chatData,
+                  [currentChatId]: {
+                    ...prev.chatData[currentChatId],
+                    messages: messageAdded
+                      ? [...prev.chatData[currentChatId].messages.slice(0, -1), approvalMessage]
+                      : [...(prev.chatData[currentChatId]?.messages || []), approvalMessage],
+                    loading: false,
+                    streamingStatus: undefined,
+                  }
+                }
+              }));
+              setFormState(prev => ({ ...prev, loading: false }));
+            } else if (data.type === 'completed') {
+              // Mark streaming as complete
+              setChatState(prev => ({
+                ...prev,
+                chatData: {
+                  ...prev.chatData,
+                  [currentChatId]: {
+                    ...prev.chatData[currentChatId],
+                    messages: prev.chatData[currentChatId].messages.map(msg =>
+                      msg.isStreaming ? { ...msg, isStreaming: false } : msg
+                    ),
+                    loading: false,
+                    streamingStatus: undefined,
+                  }
+                }
+              }));
+              setFormState(prev => ({ ...prev, loading: false }));
+            } else if (data.type === 'error') {
+              const errorMsg = data.error || 'An error occurred';
+              setFormState(prev => ({ ...prev, loading: false, error: errorMsg }));
+              setChatState(prev => ({
+                ...prev,
+                chatData: {
+                  ...prev.chatData,
+                  [currentChatId]: {
+                    ...prev.chatData[currentChatId],
+                    messages: messageAdded
+                      ? prev.chatData[currentChatId].messages.slice(0, -1)
+                      : prev.chatData[currentChatId].messages,
+                    loading: false,
+                    error: errorMsg,
+                    streamingStatus: undefined,
+                  }
+                }
+              }));
             }
           }
-        }));
+        }
       }
     } catch (err) {
       const errorMsg = 'Failed to connect to the API. Make sure the backend is running.';
@@ -422,6 +512,7 @@ export function useChat() {
             messages: prev.chatData[currentChatId].messages.slice(0, -1),
             loading: false,
             error: errorMsg,
+            streamingStatus: undefined,
           }
         }
       }));
@@ -433,6 +524,24 @@ export function useChat() {
 
     setFormState(prev => ({ ...prev, isProcessingApproval: true, error: null }));
 
+    // Remove the approval message first
+    setChatState(prev => {
+      const currentMessages = prev.chatData[threadId]?.messages || [];
+      const messagesWithoutApproval = currentMessages.filter(msg => msg.role !== 'approval');
+
+      return {
+        ...prev,
+        chatData: {
+          ...prev.chatData,
+          [threadId]: {
+            ...prev.chatData[threadId],
+            messages: messagesWithoutApproval,
+            streamingStatus: { currentNode: null, nodeHistory: [] },
+          }
+        }
+      };
+    });
+
     try {
       const response = await fetch(`${API_BASE_URL}/resume/${threadId}`, {
         method: 'POST',
@@ -442,39 +551,136 @@ export function useChat() {
         body: JSON.stringify({ approved }),
       });
 
-      const data = await response.json();
+      if (!response.ok || !response.body) {
+        throw new Error('Failed to get response');
+      }
 
-      if (response.ok && data.status === 'completed') {
-        // Remove the approval message and add the assistant's response
-        setChatState(prev => {
-          const currentMessages = prev.chatData[threadId]?.messages || [];
-          const messagesWithoutApproval = currentMessages.filter(msg => msg.role !== 'approval');
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let streamingMessage: Message = {
+        role: 'assistant',
+        content: approved ? '' : 'Tool execution was rejected.',
+        timestamp: new Date(),
+        isStreaming: approved,
+      };
 
-          const assistantMessage: Message = {
-            role: 'assistant',
-            content: approved ? data.answer : 'Tool execution was rejected.',
-            timestamp: new Date(),
-          };
+      // Add initial message
+      setChatState(prev => ({
+        ...prev,
+        chatData: {
+          ...prev.chatData,
+          [threadId]: {
+            ...prev.chatData[threadId],
+            messages: [...prev.chatData[threadId].messages, streamingMessage],
+          }
+        }
+      }));
 
-          return {
-            ...prev,
-            chatData: {
-              ...prev.chatData,
-              [threadId]: {
-                ...prev.chatData[threadId],
-                messages: [...messagesWithoutApproval, assistantMessage],
-              }
-            }
-          };
-        });
+      if (!approved) {
         setFormState(prev => ({ ...prev, isProcessingApproval: false }));
-      } else {
-        const errorMsg = data.error || 'Failed to process approval';
-        setFormState(prev => ({ ...prev, isProcessingApproval: false, error: errorMsg }));
+        return;
+      }
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = JSON.parse(line.slice(6));
+
+            if (data.type === 'node_start') {
+              setChatState(prev => ({
+                ...prev,
+                chatData: {
+                  ...prev.chatData,
+                  [threadId]: {
+                    ...prev.chatData[threadId],
+                    streamingStatus: {
+                      currentNode: data.node,
+                      nodeHistory: [...(prev.chatData[threadId]?.streamingStatus?.nodeHistory || []), data.node],
+                    }
+                  }
+                }
+              }));
+            } else if (data.type === 'node_end') {
+              setChatState(prev => ({
+                ...prev,
+                chatData: {
+                  ...prev.chatData,
+                  [threadId]: {
+                    ...prev.chatData[threadId],
+                    streamingStatus: {
+                      ...prev.chatData[threadId].streamingStatus!,
+                      currentNode: null,
+                    }
+                  }
+                }
+              }));
+            } else if (data.type === 'token') {
+              streamingMessage.content += data.content;
+              setChatState(prev => ({
+                ...prev,
+                chatData: {
+                  ...prev.chatData,
+                  [threadId]: {
+                    ...prev.chatData[threadId],
+                    messages: prev.chatData[threadId].messages.map((msg, idx) =>
+                      idx === prev.chatData[threadId].messages.length - 1 && msg.isStreaming
+                        ? { ...msg, content: streamingMessage.content }
+                        : msg
+                    ),
+                  }
+                }
+              }));
+            } else if (data.type === 'completed') {
+              setChatState(prev => ({
+                ...prev,
+                chatData: {
+                  ...prev.chatData,
+                  [threadId]: {
+                    ...prev.chatData[threadId],
+                    messages: prev.chatData[threadId].messages.map(msg =>
+                      msg.isStreaming ? { ...msg, isStreaming: false } : msg
+                    ),
+                    streamingStatus: undefined,
+                  }
+                }
+              }));
+              setFormState(prev => ({ ...prev, isProcessingApproval: false }));
+            } else if (data.type === 'error') {
+              const errorMsg = data.error || 'An error occurred';
+              setFormState(prev => ({ ...prev, isProcessingApproval: false, error: errorMsg }));
+              setChatState(prev => ({
+                ...prev,
+                chatData: {
+                  ...prev.chatData,
+                  [threadId]: {
+                    ...prev.chatData[threadId],
+                    streamingStatus: undefined,
+                  }
+                }
+              }));
+            }
+          }
+        }
       }
     } catch (err) {
       const errorMsg = 'Failed to connect to the API. Make sure the backend is running.';
       setFormState(prev => ({ ...prev, isProcessingApproval: false, error: errorMsg }));
+      setChatState(prev => ({
+        ...prev,
+        chatData: {
+          ...prev.chatData,
+          [threadId]: {
+            ...prev.chatData[threadId],
+            streamingStatus: undefined,
+          }
+        }
+      }));
     }
   };
 

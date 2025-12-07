@@ -14,6 +14,12 @@ export interface Message {
   content: string;
   timestamp: Date;
   approvalData?: ApprovalData;
+  isStreaming?: boolean;
+}
+
+export interface StreamingStatus {
+  currentNode: string | null;
+  nodeHistory: string[];
 }
 
 export interface ChatData {
@@ -24,4 +30,5 @@ export interface ChatData {
   preparingUrl: boolean;
   error: string | null;
   question: string;
+  streamingStatus?: StreamingStatus;
 }
