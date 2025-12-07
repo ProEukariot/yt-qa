@@ -1,6 +1,6 @@
 export interface ToolCall {
   name: string;
-  args: Record<string, any>;
+  args: Record<string, unknown>;
 }
 
 export interface ApprovalData {
