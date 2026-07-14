@@ -1,11 +1,7 @@
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
-from langchain_community.document_loaders import YoutubeLoader
-from langchain_community.document_loaders.youtube import TranscriptFormat
-from langchain_core.vectorstores import InMemoryVectorStore
-from langchain_ollama import OllamaEmbeddings
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain.messages import HumanMessage
+from utils.retrieval import RAG, rag_stores
 from pydantic import BaseModel
 import os
 import json
@@ -26,8 +22,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Global in-memory vector stores (keyed by thread_id)
-vector_stores = {}
 
 
 class PrepareUrlRequest(BaseModel):
@@ -51,37 +45,17 @@ def hello_world():
 def prepare_url(thread_id: str, request: PrepareUrlRequest):
     url = request.url
 
-    # Load YouTube transcript
-    loader = YoutubeLoader.from_youtube_url(
-        url,
-        transcript_format=TranscriptFormat.CHUNKS,
-        chunk_size_seconds=120,
-    )
-
-    docs = loader.load()
-
-    # Split documents into smaller chunks for better retrieval
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=200,
-    )
-    splits = text_splitter.split_documents(docs)
-
-    # Create embeddings and store in InMemoryVectorStore
-    embeddings = OllamaEmbeddings(
-        model="qwen3-embedding:8b",
-    )
-
-    vector_stores[thread_id] = InMemoryVectorStore.from_documents(
-        documents=splits, embedding=embeddings
-    )
+    # Build a RAG store for this thread from the YouTube transcript
+    rag = RAG()
+    stats = rag.ingest_youtube(url)
+    rag_stores[thread_id] = rag
 
     return {
         "message": "Video uploaded successfully",
         "thread_id": thread_id,
         "url": url,
-        "num_documents": len(docs),
-        "num_chunks": len(splits),
+        "num_documents": stats["num_documents"],
+        "num_chunks": stats["num_chunks"],
     }
 
 
@@ -91,9 +65,9 @@ async def ask_question(thread_id: str, request: AskQuestionRequest):
     from utils.state import AgentState
 
     # Check if vector store exists for the thread_id
-    if thread_id not in vector_stores:
+    if thread_id not in rag_stores:
         return {
-            "error": f"No vector store found for thread_id: {thread_id}. Please prepare the URL first.",
+            "error": f"No RAG store found for thread_id: {thread_id}. Please prepare the URL first.",
             "thread_id": thread_id,
         }
 
@@ -176,9 +150,9 @@ async def resume_agent(thread_id: str, request: ResumeRequest):
     from langgraph.types import Command
 
     # Check if vector store exists for the thread_id
-    if thread_id not in vector_stores:
+    if thread_id not in rag_stores:
         return {
-            "error": f"No vector store found for thread_id: {thread_id}. Please prepare the URL first.",
+            "error": f"No RAG store found for thread_id: {thread_id}. Please prepare the URL first.",
             "thread_id": thread_id,
         }
 

@@ -1,7 +1,7 @@
 from utils.state import AgentState
 from langchain_ollama import ChatOllama
 from langchain.messages import SystemMessage, AIMessage, ToolMessage
-from main import vector_stores
+from utils.retrieval import rag_stores
 from langgraph.prebuilt import ToolNode
 from utils.tools import tavily_search_tool
 from typing import Literal
@@ -66,24 +66,19 @@ def retrieve(state: AgentState):
     if not messages:
         return {"context": []}
 
-    query = messages[-1].content
+    rag_query = messages[-1].content
     thread_id = state["thread_id"]
 
-    # Get vector store for this thread
-    if not thread_id or thread_id not in vector_stores:
-        print(f"No vector store found for thread_id: {thread_id}")
+    # Get the RAG store for this thread
+    rag = rag_stores.get(thread_id) if thread_id else None
+    if rag is None:
+        print(f"No RAG store found for thread_id: {thread_id}")
         return {"context": []}
 
-    vector_store = vector_stores[thread_id]
+    # Retrieve relevant documents from the RAG store
+    docs = rag.query(rag_query)
 
-    # Retrieve relevant documents using similarity search
-    k = 4  # Number of documents to retrieve
-    retrieved_docs = vector_store.similarity_search(query, k=k)
-
-    # Extract page content from documents
-    docs = [doc.page_content for doc in retrieved_docs]
-
-    print(f"Retrieved {len(docs)} documents for query: '{query}'")
+    print(f"Retrieved {len(docs)} documents for query: '{rag_query}'")
     print("-" * 50)
     if docs:
         print(f"First document preview: {docs[0][:200]}...")
