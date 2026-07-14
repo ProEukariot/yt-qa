@@ -13,3 +13,6 @@ langchain-tavily
 youtube-transcript-api
 pydantic
 python-dotenv
+ragas
+rapidfuzz
+pandas
