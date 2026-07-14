@@ -1,7 +1,10 @@
 fastapi
 uvicorn
 langchain
+langchain-classic
+langchain-cohere
 langchain-community
+rank_bm25
 langchain-core
 langchain-openai
 langchain-ollama

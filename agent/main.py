@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from langchain.messages import HumanMessage
-from utils.retrieval import RAG, rag_stores
+from utils.retrieval import RAG, RetrievalStrategyType, rag_stores
 from pydantic import BaseModel
 import os
 import json
@@ -26,6 +26,7 @@ app.add_middleware(
 
 class PrepareUrlRequest(BaseModel):
     url: str
+    strategy: RetrievalStrategyType = RetrievalStrategyType.NAIVE
 
 
 class AskQuestionRequest(BaseModel):
@@ -46,7 +47,7 @@ def prepare_url(thread_id: str, request: PrepareUrlRequest):
     url = request.url
 
     # Build a RAG store for this thread from the YouTube transcript
-    rag = RAG()
+    rag = RAG(strategy=request.strategy)
     stats = rag.ingest_youtube(url)
     rag_stores[thread_id] = rag
 
@@ -54,8 +55,8 @@ def prepare_url(thread_id: str, request: PrepareUrlRequest):
         "message": "Video uploaded successfully",
         "thread_id": thread_id,
         "url": url,
+        "strategy": request.strategy.value,
         "num_documents": stats["num_documents"],
-        "num_chunks": stats["num_chunks"],
     }
 
 
