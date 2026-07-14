@@ -4,7 +4,9 @@ langchain
 langchain-community
 langchain-core
 langchain-openai
+langchain-ollama
 langchain-text-splitters
 langchain-tavily
+youtube-transcript-api
 pydantic
 python-dotenv

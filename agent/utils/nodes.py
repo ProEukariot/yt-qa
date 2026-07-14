@@ -1,5 +1,5 @@
 from utils.state import AgentState
-from langchain_openai import ChatOpenAI
+from langchain_ollama import ChatOllama
 from langchain.messages import SystemMessage, AIMessage, ToolMessage
 from main import vector_stores
 from langgraph.prebuilt import ToolNode
@@ -104,7 +104,7 @@ Your role and guidelines:
 
 Video Context: {state['context']}"""
     )
-    model = ChatOpenAI(model="gpt-4o-mini")
+    model = ChatOllama(model="qwen3.5:9b")
     model = model.bind_tools(toolkit)
 
     response = model.invoke([systemMessage] + state["messages"])

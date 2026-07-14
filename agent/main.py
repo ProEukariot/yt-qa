@@ -3,10 +3,10 @@ from fastapi.responses import StreamingResponse
 from langchain_community.document_loaders import YoutubeLoader
 from langchain_community.document_loaders.youtube import TranscriptFormat
 from langchain_core.vectorstores import InMemoryVectorStore
-from langchain_community.embeddings import JinaEmbeddings
+from langchain_ollama import OllamaEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain.messages import HumanMessage
-from pydantic import SecretStr, BaseModel
+from pydantic import BaseModel
 import os
 import json
 import asyncio
@@ -68,11 +68,8 @@ def prepare_url(thread_id: str, request: PrepareUrlRequest):
     splits = text_splitter.split_documents(docs)
 
     # Create embeddings and store in InMemoryVectorStore
-    api_key = os.getenv("JINA_API_KEY")
-    embeddings = JinaEmbeddings(
-        jina_api_key=SecretStr(api_key) if api_key else None,
-        model_name="jina-embeddings-v2-base-en",
-        session=None,
+    embeddings = OllamaEmbeddings(
+        model="qwen3-embedding:8b",
     )
 
     vector_stores[thread_id] = InMemoryVectorStore.from_documents(
